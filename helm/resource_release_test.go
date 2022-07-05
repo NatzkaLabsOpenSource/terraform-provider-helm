@@ -29,6 +29,20 @@ import (
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
+type fakeDataGetter struct{}
+
+func (f fakeDataGetter) Get(key string) interface{} {
+	return nil
+}
+
+func (f fakeDataGetter) GetOk(s string) (interface{}, bool) {
+	return nil, false
+}
+
+func (f fakeDataGetter) GetOkExists(s string) (interface{}, bool) {
+	return nil, false
+}
+
 func TestAccResourceRelease_basic(t *testing.T) {
 	name := randName("basic")
 	namespace := createRandomNamespace(t)
@@ -864,7 +878,7 @@ func testAccCheckHelmReleaseDependencyUpdate(namespace string, name string, expe
 			return fmt.Errorf("provider not properly initialized")
 		}
 
-		actionConfig, err := m.(*Meta).GetHelmConfiguration(namespace)
+		actionConfig, err := m.(*Meta).GetHelmConfiguration(&fakeDataGetter{}, namespace)
 		if err != nil {
 			return err
 		}
@@ -896,7 +910,7 @@ func testAccCheckHelmReleaseDestroy(namespace string) resource.TestCheckFunc {
 			return fmt.Errorf("provider not properly initialized")
 		}
 
-		actionConfig, err := m.(*Meta).GetHelmConfiguration(namespace)
+		actionConfig, err := m.(*Meta).GetHelmConfiguration(&fakeDataGetter{}, namespace)
 		if err != nil {
 			return err
 		}

@@ -109,6 +109,13 @@ func resourceRelease() *schema.Resource {
 				Description: "Pass credentials to all domains",
 				Default:     defaultAttributes["pass_credentials"],
 			},
+			"kubernetes": {
+				Type:        schema.TypeList,
+				MaxItems:    1,
+				Optional:    true,
+				Description: "Kubernetes configuration.",
+				Elem:        kubernetesResource(),
+			},
 			"chart": {
 				Type:        schema.TypeString,
 				Required:    true,
@@ -427,7 +434,7 @@ func resourceReleaseRead(ctx context.Context, d *schema.ResourceData, meta inter
 	m := meta.(*Meta)
 	n := d.Get("namespace").(string)
 
-	c, err := m.GetHelmConfiguration(n)
+	c, err := m.GetHelmConfiguration(d, n)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -484,7 +491,7 @@ func resourceReleaseCreate(ctx context.Context, d *schema.ResourceData, meta int
 	n := d.Get("namespace").(string)
 
 	debug("%s Getting helm configuration", logID)
-	actionConfig, err := m.GetHelmConfiguration(n)
+	actionConfig, err := m.GetHelmConfiguration(d, n)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -616,7 +623,7 @@ func resourceReleaseCreate(ctx context.Context, d *schema.ResourceData, meta int
 func resourceReleaseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	m := meta.(*Meta)
 	n := d.Get("namespace").(string)
-	actionConfig, err := m.GetHelmConfiguration(n)
+	actionConfig, err := m.GetHelmConfiguration(d, n)
 	if err != nil {
 		d.Partial(true)
 		return diag.FromErr(err)
@@ -716,7 +723,7 @@ func resourceReleaseUpdate(ctx context.Context, d *schema.ResourceData, meta int
 func resourceReleaseDelete(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
 	m := meta.(*Meta)
 	n := d.Get("namespace").(string)
-	actionConfig, err := m.GetHelmConfiguration(n)
+	actionConfig, err := m.GetHelmConfiguration(d, n)
 	if err != nil {
 		return diag.FromErr(err)
 	}
@@ -755,7 +762,7 @@ func resourceDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{})
 	name := d.Get("name").(string)
 	namespace := d.Get("namespace").(string)
 
-	actionConfig, err := m.GetHelmConfiguration(namespace)
+	actionConfig, err := m.GetHelmConfiguration(d, namespace)
 	if err != nil {
 		return err
 	}
@@ -965,7 +972,7 @@ func resourceReleaseExists(d *schema.ResourceData, meta interface{}) (bool, erro
 	m := meta.(*Meta)
 	n := d.Get("namespace").(string)
 
-	c, err := m.GetHelmConfiguration(n)
+	c, err := m.GetHelmConfiguration(d, n)
 	if err != nil {
 		return false, err
 	}
@@ -1220,7 +1227,7 @@ func resourceHelmReleaseImportState(ctx context.Context, d *schema.ResourceData,
 
 	m := meta.(*Meta)
 
-	c, err := m.GetHelmConfiguration(namespace)
+	c, err := m.GetHelmConfiguration(d, namespace)
 	if err != nil {
 		return nil, err
 	}

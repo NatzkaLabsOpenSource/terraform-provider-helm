@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 	"github.com/mitchellh/go-homedir"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/client-go/discovery"
@@ -66,7 +65,7 @@ func (k *KubeConfig) ToRawKubeConfigLoader() clientcmd.ClientConfig {
 	return k.ClientConfig
 }
 
-func newKubeConfig(configData *schema.ResourceData, namespace *string) (*KubeConfig, error) {
+func newKubeConfig(configData dataGetter, namespace *string) (*KubeConfig, error) {
 	overrides := &clientcmd.ConfigOverrides{}
 	loader := &clientcmd.ClientConfigLoadingRules{}
 

@@ -75,6 +75,13 @@ func dataTemplate() *schema.Resource {
 				Optional:    true,
 				Description: "Pass credentials to all domains",
 			},
+			"kubernetes": {
+				Type:        schema.TypeList,
+				MaxItems:    1,
+				Optional:    true,
+				Description: "Kubernetes configuration.",
+				Elem:        kubernetesResource(),
+			},
 			"chart": {
 				Type:        schema.TypeString,
 				Required:    true,
@@ -381,7 +388,7 @@ func dataTemplateRead(ctx context.Context, d *schema.ResourceData, meta interfac
 
 	debug("%s Getting Config", logID)
 
-	actionConfig, err := m.GetHelmConfiguration(n)
+	actionConfig, err := m.GetHelmConfiguration(d, n)
 	if err != nil {
 		return diag.FromErr(err)
 	}
