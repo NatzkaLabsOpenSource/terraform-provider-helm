@@ -124,6 +124,7 @@ func resourceRelease() *schema.Resource {
 			"version": {
 				Type:        schema.TypeString,
 				Optional:    true,
+				Computed:    true,
 				Description: "Specify the exact chart version to install. If this is not specified, the latest version is installed.",
 			},
 			"devel": {
