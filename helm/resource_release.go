@@ -124,7 +124,6 @@ func resourceRelease() *schema.Resource {
 			"version": {
 				Type:        schema.TypeString,
 				Optional:    true,
-				Computed:    true,
 				Description: "Specify the exact chart version to install. If this is not specified, the latest version is installed.",
 			},
 			"devel": {
@@ -719,7 +718,7 @@ func resourceDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{})
 		return d.SetNew("version", chart.Metadata.Version)
 	}
 
-	return d.SetNewComputed("version")
+	return nil
 }
 
 func setReleaseAttributes(d *schema.ResourceData, r *release.Release, meta interface{}) error {
