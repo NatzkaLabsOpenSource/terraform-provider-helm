@@ -418,40 +418,6 @@ func resourceRelease() *schema.Resource {
 }
 
 func resourceReleaseRead(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-	exists, err := resourceReleaseExists(d, meta)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	if !exists {
-		d.SetId("")
-		return diag.Diagnostics{}
-	}
-
-	logID := fmt.Sprintf("[resourceReleaseRead: %s]", d.Get("name").(string))
-	debug("%s Started", logID)
-
-	m := meta.(*Meta)
-	n := d.Get("namespace").(string)
-
-	c, err := m.GetHelmConfiguration(d, n)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	name := d.Get("name").(string)
-	r, err := getRelease(m, c, name)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	err = setReleaseAttributes(d, r, m)
-	if err != nil {
-		return diag.FromErr(err)
-	}
-
-	debug("%s Done", logID)
-
 	return nil
 }
 
