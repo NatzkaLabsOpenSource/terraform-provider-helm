@@ -306,11 +306,6 @@ func resourceRelease() *schema.Resource {
 				Default:     defaultAttributes["wait_for_jobs"],
 				Description: "If wait is enabled, will wait until all Jobs have been completed before marking the release as successful.",
 			},
-			"status": {
-				Type:        schema.TypeString,
-				Computed:    true,
-				Description: "Status of the release.",
-			},
 			"dependency_update": {
 				Type:        schema.TypeBool,
 				Optional:    true,
@@ -363,55 +358,6 @@ func resourceRelease() *schema.Resource {
 				Optional:    true,
 				Default:     defaultAttributes["lint"],
 				Description: "Run helm lint when planning",
-			},
-			"manifest": {
-				Type:        schema.TypeString,
-				Description: "The rendered manifest as JSON.",
-				Computed:    true,
-			},
-			"metadata": {
-				Type:        schema.TypeList,
-				Computed:    true,
-				Description: "Status of the deployed release.",
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"name": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "Name is the name of the release.",
-						},
-						"revision": {
-							Type:        schema.TypeInt,
-							Computed:    true,
-							Description: "Version is an int32 which represents the version of the release.",
-						},
-						"namespace": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "Namespace is the kubernetes namespace of the release.",
-						},
-						"chart": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The name of the chart.",
-						},
-						"version": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "A SemVer 2 conformant version string of the chart.",
-						},
-						"app_version": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "The version number of the application being deployed.",
-						},
-						"values": {
-							Type:        schema.TypeString,
-							Computed:    true,
-							Description: "Set of extra values, added to the chart. The sensitive data is cloaked. JSON encoded.",
-						},
-					},
-				},
 			},
 		},
 	}
@@ -587,6 +533,10 @@ func resourceReleaseCreate(ctx context.Context, d *schema.ResourceData, meta int
 }
 
 func resourceReleaseUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+	if !d.HasChangeExcept("kubernetes") {
+		return nil
+	}
+
 	m := meta.(*Meta)
 	n := d.Get("namespace").(string)
 	actionConfig, err := m.GetHelmConfiguration(d, n)
@@ -599,6 +549,7 @@ func resourceReleaseUpdate(ctx context.Context, d *schema.ResourceData, meta int
 		d.Partial(true)
 		return diag.FromErr(err)
 	}
+
 	client := action.NewUpgrade(actionConfig)
 
 	cpo, chartName, err := chartPathOptions(d, m, &client.ChartPathOptions)
@@ -725,7 +676,6 @@ func resourceDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{})
 	debug("%s Start", logID)
 
 	m := meta.(*Meta)
-	name := d.Get("name").(string)
 	namespace := d.Get("namespace").(string)
 
 	actionConfig, err := m.GetHelmConfiguration(d, namespace)
@@ -737,12 +687,6 @@ func resourceDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{})
 		return err
 	}
 	client := action.NewUpgrade(actionConfig)
-
-	// Always set desired state to DEPLOYED
-	err = d.SetNew("status", release.StatusDeployed.String())
-	if err != nil {
-		return err
-	}
 
 	cpo, chartName, err := chartPathOptions(d, m, &client.ChartPathOptions)
 	if err != nil {
@@ -768,91 +712,6 @@ func resourceDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{})
 	}
 	debug("%s Release validated", logID)
 
-	if m.ExperimentEnabled("manifest") {
-		// we don't need a custom diff if the release hasn't been created yet
-		oldStatus, _ := d.GetChange("status")
-		if oldStatus.(string) == "" {
-			return nil
-		}
-
-		// check if release exists
-		_, err = getRelease(m, actionConfig, name)
-		if err == errReleaseNotFound {
-			if len(chart.Metadata.Version) > 0 {
-				return d.SetNew("version", chart.Metadata.Version)
-			}
-			d.SetNewComputed("manifest")
-			return nil
-		} else if err != nil {
-			return fmt.Errorf("error retrieving old release for a diff: %v", err)
-		}
-
-		debug("%s performing dry run", logID)
-
-		client.ChartPathOptions = *cpo
-		client.Devel = d.Get("devel").(bool)
-		client.Namespace = d.Get("namespace").(string)
-		client.Timeout = time.Duration(d.Get("timeout").(int)) * time.Second
-		client.Wait = d.Get("wait").(bool)
-		client.DryRun = true // do not apply changes
-		client.DisableHooks = d.Get("disable_webhooks").(bool)
-		client.Atomic = d.Get("atomic").(bool)
-		client.SubNotes = d.Get("render_subchart_notes").(bool)
-		client.WaitForJobs = d.Get("wait_for_jobs").(bool)
-		client.Force = d.Get("force_update").(bool)
-		client.ResetValues = d.Get("reset_values").(bool)
-		client.ReuseValues = d.Get("reuse_values").(bool)
-		client.Recreate = d.Get("recreate_pods").(bool)
-		client.MaxHistory = d.Get("max_history").(int)
-		client.CleanupOnFail = d.Get("cleanup_on_fail").(bool)
-		client.Description = d.Get("description").(string)
-
-		if cmd := d.Get("postrender.0.binary_path").(string); cmd != "" {
-			av := d.Get("postrender.0.args")
-			var args []string
-			for _, arg := range av.([]interface{}) {
-				if arg == nil {
-					continue
-				}
-				args = append(args, arg.(string))
-			}
-
-			pr, err := postrender.NewExec(cmd, args...)
-
-			if err != nil {
-				return err
-			}
-			client.PostRenderer = pr
-		}
-
-		values, err := getValues(d)
-		if err != nil {
-			return fmt.Errorf("error getting values for a diff: %v", err)
-		}
-
-		dry, err := client.Run(name, chart, values)
-		if err != nil && strings.Contains(err.Error(), "has no deployed releases") {
-			if len(chart.Metadata.Version) > 0 {
-				return d.SetNew("version", chart.Metadata.Version)
-			}
-			d.SetNewComputed("version")
-			d.SetNewComputed("manifest")
-			return nil
-		} else if err != nil {
-			return fmt.Errorf("error running dry run for a diff: %v", err)
-		}
-
-		jsonManifest, err := convertYAMLManifestToJSON(dry.Manifest)
-		if err != nil {
-			return err
-		}
-		manifest := redactSensitiveValues(string(jsonManifest), d)
-		d.SetNew("manifest", manifest)
-		debug("%s set manifest: %s", logID, jsonManifest)
-	} else {
-		d.Clear("manifest")
-	}
-
 	debug("%s Done", logID)
 
 	// Set desired version from the Chart metadata if available
@@ -860,7 +719,7 @@ func resourceDiff(ctx context.Context, d *schema.ResourceDiff, meta interface{})
 		return d.SetNew("version", chart.Metadata.Version)
 	}
 
-	return d.SetNewComputed("version")
+	return nil
 }
 
 func setReleaseAttributes(d *schema.ResourceData, r *release.Release, meta interface{}) error {
@@ -874,35 +733,7 @@ func setReleaseAttributes(d *schema.ResourceData, r *release.Release, meta inter
 		return err
 	}
 
-	if err := d.Set("status", r.Info.Status.String()); err != nil {
-		return err
-	}
-
-	cloakSetValues(r.Config, d)
-	values, err := json.Marshal(r.Config)
-	if err != nil {
-		return err
-	}
-
-	m := meta.(*Meta)
-	if m.ExperimentEnabled("manifest") {
-		jsonManifest, err := convertYAMLManifestToJSON(r.Manifest)
-		if err != nil {
-			return err
-		}
-		manifest := redactSensitiveValues(string(jsonManifest), d)
-		d.Set("manifest", manifest)
-	}
-
-	return d.Set("metadata", []map[string]interface{}{{
-		"name":        r.Name,
-		"revision":    r.Version,
-		"namespace":   r.Namespace,
-		"chart":       r.Chart.Metadata.Name,
-		"version":     r.Chart.Metadata.Version,
-		"app_version": r.Chart.Metadata.AppVersion,
-		"values":      string(values),
-	}})
+	return nil
 }
 
 func cloakSetValues(config map[string]interface{}, d resourceGetter) {
